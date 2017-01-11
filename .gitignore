@@ -3,3 +3,4 @@
 *.hi
 .stack-work/
 dist/
+.DS_Store

@@ -7,13 +7,13 @@ COPY *.cabal stack.yaml ./
 RUN chown -R build:build /build
 USER build
 RUN stack update
-RUN stack install --dependencies-only
+RUN stack install --system-ghc --dependencies-only
 
 USER root
 COPY . .
 RUN chown -R build:build /build
 USER build
-RUN stack install
+RUN stack install --system-ghc
 
 USER root
 WORKDIR /app

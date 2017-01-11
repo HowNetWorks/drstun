@@ -1,6 +1,7 @@
-resolver: lts-7.13
+resolver: lts-7.15
 packages:
   - '.'
   - location:
       git: https://github.com/oherrala/haskell-stun
       commit: master
+    extra-dep: true

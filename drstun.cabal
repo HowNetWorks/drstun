@@ -1,5 +1,5 @@
 name:                drstun
-version:             0.1.0.0
+version:             0.0.1
 synopsis:            Dr. STUN. A STUN Server
 description:         Please see README.md
 homepage:            https://github.com/HowNetWorks/drstun#readme
@@ -24,8 +24,9 @@ executable drstun
   default-language:    Haskell2010
   ghc-options:         -Wall -threaded -with-rtsopts=-N -rtsopts
   build-depends:       base
-                     , stun
                      , network
+                     , stun
+                     , text
 
 test-suite hlint
   hs-source-dirs:      test

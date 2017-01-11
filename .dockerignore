@@ -3,3 +3,4 @@
 *.hi
 .git/
 .stack-work/
+haskell-stun/
