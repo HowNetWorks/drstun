@@ -35,6 +35,12 @@ main = do
   stunMain 3478
   exitSuccess
 
+defHints, tcpHints, udpHints :: Socket.AddrInfo
+defHints = Socket.defaultHints
+           { Socket.addrFlags = [ Socket.AI_ADDRCONFIG ] } -- , Socket.AI_PASSIVE ] }
+tcpHints = defHints { Socket.addrSocketType = Socket.Stream }
+udpHints = defHints { Socket.addrSocketType = Socket.Datagram }
+
 stunMain :: Int -> IO ()
 stunMain port = do
   let justPort = Just . show $ port
@@ -94,14 +100,6 @@ stunLoop sock Socket.Datagram = forever $ handleMessage sock
 stunLoop _ sockType = error $ "ERROR: Invalid socket type of " ++ show sockType
 
 
-defHints, tcpHints, udpHints :: Socket.AddrInfo
-defHints = Socket.defaultHints
-           { Socket.addrFlags = [ Socket.AI_ADDRCONFIG, Socket.AI_PASSIVE ] }
-tcpHints = defHints { Socket.addrSocketType = Socket.Stream }
-udpHints = defHints { Socket.addrSocketType = Socket.Datagram }
-
-
-
 ------------------------------------------------------------------------
 -- STUN/TURN Request/Response dialogs
 
@@ -109,9 +107,10 @@ handleMessage :: Socket -> IO ()
 handleMessage sock = do
   (request, from) <- recvRequest sock
   case request of
-    Just (STUNMessage BindingRequest transId attrs) -> do
+    Just req@(STUNMessage BindingRequest _ attrs) -> do
       putStrLn $ "BindingRequest from " ++ show from ++ " " ++ show attrs
-      sendBindingResponse sock from transId
+      -- sendBindingResponse sock from transId
+      handleBinding sock req from
     Just req@(STUNMessage AllocateRequest _ attrs) -> do
       putStrLn $ "AllocateRequest from " ++ show from ++ " " ++ show attrs
       handleAllocate sock req from
@@ -128,24 +127,34 @@ recvRequest sock = do
     Left _    -> return (Nothing, from)
 
 
+handleBinding :: Socket -> STUNMessage -> Socket.SockAddr -> IO ()
+handleBinding sock (STUNMessage _ transId _) sockAddr = do
+  sendMessage sock sockAddr message
+  handleMessage sock
+  where
+    mappedAddress = addrToXorMappedAddress sockAddr transId
+    attrs = [ mappedAddress, software, Fingerprint Nothing ]
+    message = STUNMessage BindingResponse transId attrs
+
 handleAllocate :: Socket -> STUNMessage -> Socket.SockAddr -> IO ()
 handleAllocate sock (STUNMessage _ transId attrs) sockAddr = do
   serverAddr <- Socket.getSocketName sock
   case getUsername attrs of
-    Just _ -> sendAllocateResponse sock serverAddr sockAddr transId
+    Just _ -> sendAllocateSuccess sock serverAddr sockAddr transId
     _      -> sendAllocateError sock sockAddr transId
   handleMessage sock
-
 
 sendMessage :: Socket -> Socket.SockAddr -> STUNMessage -> IO ()
 sendMessage sock from message = do
   let packet = produceSTUNMessage message
+      debug = parseSTUNMessage packet
   _ <- Socket.sendTo sock packet from
+  putStrLn $ "DEBUG: " ++ show from ++ " " ++ show debug
   return ()
 
 -- https://tools.ietf.org/html/rfc5766#section-6.2
-sendAllocateResponse :: Socket -> Socket.SockAddr -> Socket.SockAddr -> TransactionID -> IO ()
-sendAllocateResponse sock serverAddr from transId = sendMessage sock from message
+sendAllocateSuccess :: Socket -> Socket.SockAddr -> Socket.SockAddr -> TransactionID -> IO ()
+sendAllocateSuccess sock serverAddr from transId = sendMessage sock from message
   where
     relayedAddress = addrToXorRelayedAddress serverAddr transId
     mappedAddress = addrToXorMappedAddress from transId
