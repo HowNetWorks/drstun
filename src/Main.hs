@@ -166,7 +166,7 @@ sendAllocateSuccess sock serverAddr from transId = sendMessage sock from message
   where
     relayedAddress = addrToXorRelayedAddress serverAddr transId
     mappedAddress = addrToXorMappedAddress from transId
-    lifetime = Lifetime 1
+    lifetime = Lifetime 1337
     key = longTermKey realm username credential
     messageIntegrity = MessageIntegrity (Key key)
     attrs = [ relayedAddress, mappedAddress, lifetime, software,
