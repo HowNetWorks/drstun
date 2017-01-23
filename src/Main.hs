@@ -8,6 +8,7 @@ import           Control.Monad             (forM, forever, when)
 
 import           Data.Text                 (Text)
 
+import           System.Environment        (getArgs)
 import           System.Exit               (exitSuccess)
 
 import           Network.Socket            (Socket)
@@ -16,7 +17,6 @@ import qualified Network.Socket            as Socket hiding (recv, recvFrom,
 import qualified Network.Socket.ByteString as Socket
 
 import           Network.STUN
-
 
 software :: STUNAttribute
 software = Software "Dr. Stun"
@@ -32,22 +32,30 @@ credential = "notasecret"
 
 main :: IO ()
 main = do
-  stunMain 3478
+  ips <- getArgs
+  stunMain ips 3478
   exitSuccess
 
 defHints, tcpHints, udpHints :: Socket.AddrInfo
 defHints = Socket.defaultHints
-           { Socket.addrFlags = [ Socket.AI_ADDRCONFIG ] } -- , Socket.AI_PASSIVE ] }
+           { Socket.addrFlags = [ Socket.AI_ADDRCONFIG, Socket.AI_PASSIVE ] }
 tcpHints = defHints { Socket.addrSocketType = Socket.Stream }
 udpHints = defHints { Socket.addrSocketType = Socket.Datagram }
 
-stunMain :: Int -> IO ()
-stunMain port = do
-  let justPort = Just . show $ port
-  tcpAddrs <- Socket.getAddrInfo (Just tcpHints) Nothing justPort
-  udpAddrs <- Socket.getAddrInfo (Just udpHints) Nothing justPort
+mapAddrs :: [String] -> Int -> IO [Socket.AddrInfo]
+mapAddrs [] port = do
+  tcpAddrs <- Socket.getAddrInfo (Just tcpHints) Nothing (Just . show $ port)
+  udpAddrs <- Socket.getAddrInfo (Just udpHints) Nothing (Just . show $ port)
+  return $! tcpAddrs `mappend` udpAddrs
+mapAddrs ips port = do
+  let getAddrInfo hints ip = Socket.getAddrInfo (Just hints) (Just ip) (Just . show $ port)
+  tcpAddrs <- mconcat <$> mapM (getAddrInfo tcpHints) ips
+  udpAddrs <- mconcat <$> mapM (getAddrInfo udpHints) ips
+  return $! tcpAddrs ++ udpAddrs
 
-  let addrs = tcpAddrs ++ udpAddrs
+stunMain :: [String] -> Int -> IO ()
+stunMain ips port = do
+  addrs <- mapAddrs ips port
 
   -- Leave one listener on foreground and fork rest of the listeners
   -- to their own threads
@@ -62,7 +70,7 @@ stunMain port = do
 
       case sockType of
         Socket.Stream -> do
-          Socket.listen sock 5
+          Socket.listen sock Socket.maxListenQueue
           putStrLn $ "*** Listening on TCP " ++ show (Socket.addrAddress addr)
         Socket.Datagram ->
           putStrLn $ "*** Listening on UDP " ++ show (Socket.addrAddress addr)
@@ -128,20 +136,20 @@ recvRequest sock = do
 
 
 handleBinding :: Socket -> STUNMessage -> Socket.SockAddr -> IO ()
-handleBinding sock (STUNMessage _ transId _) sockAddr = do
-  sendMessage sock sockAddr message
+handleBinding sock (STUNMessage _ transId _) from = do
+  sendMessage sock from message
   handleMessage sock
   where
-    mappedAddress = addrToXorMappedAddress sockAddr transId
+    mappedAddress = addrToXorMappedAddress from transId
     attrs = [ mappedAddress, software, Fingerprint Nothing ]
     message = STUNMessage BindingResponse transId attrs
 
 handleAllocate :: Socket -> STUNMessage -> Socket.SockAddr -> IO ()
-handleAllocate sock (STUNMessage _ transId attrs) sockAddr = do
+handleAllocate sock (STUNMessage _ transId attrs) from = do
   serverAddr <- Socket.getSocketName sock
   case getUsername attrs of
-    Just _ -> sendAllocateSuccess sock serverAddr sockAddr transId
-    _      -> sendAllocateError sock sockAddr transId
+    Just _ -> sendAllocateSuccess sock serverAddr from transId
+    _      -> sendAllocateError sock from transId
   handleMessage sock
 
 sendMessage :: Socket -> Socket.SockAddr -> STUNMessage -> IO ()
