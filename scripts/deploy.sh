@@ -31,5 +31,5 @@ DIRNAME=$(pwd -P)
 NAME=$(basename "${DIRNAME}")
 REMOTE_TAG="eu.gcr.io/${GCLOUD_PROJECT}/${NAME}:${TAG}"
 
-docker build -t "${REMOTE_TAG}" .
+docker build -t "${REMOTE_TAG}" --no-cache . # <- there's a dot
 gcloud docker -- push "${REMOTE_TAG}"
